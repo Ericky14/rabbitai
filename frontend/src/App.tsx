@@ -218,9 +218,6 @@ const App: React.FC = () => {
   };
 
   const pollJobStatus = async (jobId: string): Promise<void> => {
-    const maxAttempts = 30;
-    let attempts = 0;
-
     const poll = async (): Promise<void> => {
       try {
         const statusResponse = await axios.get<{status: string, error?: string, progress?: number, stage?: string}>(`${API_BASE_URL}/status/${jobId}`);
@@ -249,33 +246,14 @@ const App: React.FC = () => {
             stage: statusResponse.data.stage
           } : null);
           
-          // Still processing, continue polling
-          attempts++;
-          if (attempts < maxAttempts) {
-            const timeoutId = setTimeout(poll, 2000);
-            setPollingTimeoutId(timeoutId);
-          } else {
-            setJobStatus(prev => prev ? {
-              ...prev,
-              status: 'failed',
-              error: 'Processing timeout'
-            } : null);
-            setPollingTimeoutId(null);
-          }
-        }
-      } catch (error) {
-        attempts++;
-        if (attempts < maxAttempts) {
+          // Still processing, continue polling indefinitely
           const timeoutId = setTimeout(poll, 2000);
           setPollingTimeoutId(timeoutId);
-        } else {
-          setJobStatus(prev => prev ? {
-            ...prev,
-            status: 'failed',
-            error: 'Processing timeout'
-          } : null);
-          setPollingTimeoutId(null);
         }
+      } catch (error) {
+        // Continue polling even on errors (network issues, etc.)
+        const timeoutId = setTimeout(poll, 2000);
+        setPollingTimeoutId(timeoutId);
       }
     };
 

@@ -59,15 +59,74 @@ cd rabbitai
 make up
 ```
 
-2. **Access the application**:
+2. **Alternative: Development with hot reload**:
+```bash
+# Start services with file watching for development
+make watch
+
+# Or manually setup LocalStack if needed
+./scripts/setup-localstack.sh
+```
+
+3. **Access the application**:
 - Frontend: http://localhost:3000
 - API: http://localhost:8080
 - RabbitMQ Management: http://localhost:15672 (admin/admin123)
 - Grafana: http://localhost:3001 (admin/admin123)
 
-3. **Test the API**:
+4. **Test the API**:
 ```bash
 make test
+```
+
+### Development Workflow Examples
+
+**Start development environment:**
+```bash
+# Full development setup with hot reload
+make watch
+
+# Check service URLs
+make urls
+
+# View logs in real-time
+make logs
+```
+
+**Frontend development:**
+```bash
+# Install frontend dependencies
+make frontend-install
+
+# Start frontend in development mode
+make frontend-dev
+
+# Build frontend for production
+make frontend-build
+```
+
+**Testing and debugging:**
+```bash
+# Test API endpoints
+make test
+
+# Test file upload with sample image
+make test-upload
+
+# Debug Grafana dashboards
+make grafana-debug
+
+# Check metrics endpoints
+make metrics-debug
+```
+
+**Clean up:**
+```bash
+# Stop all services
+make down
+
+# Clean up containers and volumes
+make clean
 ```
 
 ### Available Commands
@@ -75,10 +134,15 @@ make test
 ```bash
 make up          # Start all services
 make down        # Stop all services
+make watch       # Start with hot reload (development)
 make logs        # View logs
 make test        # Test API endpoints
 make clean       # Clean up containers and volumes
 make urls        # Show all service URLs
+make frontend-install    # Install frontend dependencies
+make frontend-dev       # Start frontend development server
+make grafana-debug      # Debug Grafana configuration
+make metrics-debug      # Check metrics endpoints
 ```
 
 ## 🔧 Services

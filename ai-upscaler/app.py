@@ -191,6 +191,111 @@ async def download_upscaled_image(job_id: str):
     except Exception as e:
         raise HTTPException(status_code=404, detail=f"File not found: {str(e)}")
 
+@app.delete("/admin/queue/{queue_name}")
+async def clear_queue(queue_name: str):
+    """Clear all messages from a specific queue"""
+    logger.info(f"Attempting to clear queue: {queue_name}")
+    try:
+        connection = pika.BlockingConnection(pika.URLParameters(Config.RABBITMQ_URL))
+        channel = connection.channel()
+        
+        # Purge the queue
+        method = channel.queue_purge(queue=queue_name)
+        message_count = method.method.message_count
+        
+        connection.close()
+        logger.info(f"Successfully cleared {message_count} messages from queue '{queue_name}'")
+        
+        return {
+            "message": f"Cleared {message_count} messages from queue '{queue_name}'",
+            "queue": queue_name,
+            "messages_cleared": message_count
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to clear queue {queue_name}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to clear queue: {str(e)}")
+
+@app.get("/admin/queues")
+async def list_queues():
+    """List all queues and their message counts"""
+    logger.info("Fetching queue information")
+    try:
+        connection = pika.BlockingConnection(pika.URLParameters(Config.RABBITMQ_URL))
+        channel = connection.channel()
+        
+        # Get queue info for known queues
+        queues_info = []
+        known_queues = ['upscale_jobs', 'analytics_events']
+        
+        for queue_name in known_queues:
+            try:
+                method = channel.queue_declare(queue=queue_name, passive=True)
+                queues_info.append({
+                    "name": queue_name,
+                    "messages": method.method.message_count,
+                    "consumers": method.method.consumer_count
+                })
+            except Exception as e:
+                logger.warning(f"Queue {queue_name} not found or error: {e}")
+        
+        connection.close()
+        
+        return {
+            "queues": queues_info,
+            "total_queues": len(queues_info)
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to list queues: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to list queues: {str(e)}")
+
+@app.delete("/admin/queues/clear-all")
+async def clear_all_queues():
+    """Clear all messages from all known queues"""
+    logger.info("Attempting to clear all queues")
+    try:
+        connection = pika.BlockingConnection(pika.URLParameters(Config.RABBITMQ_URL))
+        channel = connection.channel()
+        
+        known_queues = ['upscale_jobs', 'analytics_events']
+        results = []
+        total_cleared = 0
+        
+        for queue_name in known_queues:
+            try:
+                method = channel.queue_purge(queue=queue_name)
+                message_count = method.method.message_count
+                total_cleared += message_count
+                
+                results.append({
+                    "queue": queue_name,
+                    "messages_cleared": message_count,
+                    "status": "success"
+                })
+                logger.info(f"Cleared {message_count} messages from queue '{queue_name}'")
+                
+            except Exception as e:
+                results.append({
+                    "queue": queue_name,
+                    "messages_cleared": 0,
+                    "status": "error",
+                    "error": str(e)
+                })
+                logger.error(f"Failed to clear queue {queue_name}: {e}")
+        
+        connection.close()
+        
+        return {
+            "message": f"Cleared {total_cleared} total messages from {len(known_queues)} queues",
+            "total_messages_cleared": total_cleared,
+            "results": results
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to clear all queues: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to clear all queues: {str(e)}")
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8080)

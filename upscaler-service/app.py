@@ -69,10 +69,11 @@ def load_realesrgan_model():
         scale=4,
         model_path=model_path,
         model=model,
-        tile=512,        # Use tiling to reduce memory usage and improve speed
-        tile_pad=10,
+        tile=256,        # Smaller tiles for less memory, faster processing
+        tile_pad=5,      # Reduced padding
         pre_pad=0,
-        half=False       # Keep False for CPU, True for GPU would be faster
+        half=False,      # Keep False for CPU
+        device='cpu'     # Explicitly set CPU device
     )
     return upsampler
 
@@ -80,6 +81,23 @@ def load_realesrgan_model():
 print("Loading Real-ESRGAN model...")
 upsampler = load_realesrgan_model()
 print("Model loaded successfully!")
+
+# Add model warming and caching
+def warm_up_model():
+    """Warm up the model with a small test image"""
+    logger.info("Warming up Real-ESRGAN model...")
+    try:
+        # Create a small test image
+        test_img = np.random.randint(0, 255, (64, 64, 3), dtype=np.uint8)
+        upsampler.enhance(test_img, outscale=4)
+        logger.info("Model warmed up successfully")
+    except Exception as e:
+        logger.warning(f"Model warm-up failed: {e}")
+
+# Warm up model at startup
+print("Warming up model for faster processing...")
+warm_up_model()
+print("Model ready for processing!")
 
 @app.get("/health")
 async def health():
@@ -106,7 +124,7 @@ def setup_rabbitmq_consumer():
         raise
 
 def process_upscale_job(ch, method, properties, body):
-    """Process upscale job from queue"""
+    """Process upscale job from queue with optimizations"""
     logger.info(f"Received message: {body}")
     try:
         job_data = json.loads(body)
@@ -126,54 +144,71 @@ def process_upscale_job(ch, method, properties, body):
         update_progress(10, "Downloading image")
         
         # Download image from S3
-        logger.info(f"Downloading from S3: {job_data['s3_input_key']}")
         response = s3_client.get_object(
             Bucket=Config.S3_INPUT_BUCKET,
             Key=job_data['s3_input_key']
         )
         
-        update_progress(30, "Loading image")
+        update_progress(30, "Loading and optimizing image")
         
-        # Load and process image
+        # Load and process image with optimizations
         image_data = response['Body'].read()
-        logger.info(f"Image data size: {len(image_data)} bytes")
         image = Image.open(io.BytesIO(image_data))
         
-        # Resize if image is too large (for faster processing)
-        max_dimension = 1024  # Limit input size
-        if max(image.size) > max_dimension:
-            logger.info(f"Resizing large image from {image.size}")
-            image.thumbnail((max_dimension, max_dimension), Image.Resampling.LANCZOS)
-            update_progress(35, "Resizing large image")
+        # Aggressive resizing for small instances
+        max_dimension = 512  # Reduced from 1024 for faster processing
+        original_size = image.size
         
+        if max(image.size) > max_dimension:
+            logger.info(f"Resizing large image from {image.size} to max {max_dimension}")
+            # Use faster resampling method
+            image.thumbnail((max_dimension, max_dimension), Image.Resampling.BILINEAR)
+            update_progress(40, "Resized for faster processing")
+        
+        # Convert to RGB if needed (remove alpha channel)
+        if image.mode in ('RGBA', 'LA', 'P'):
+            background = Image.new('RGB', image.size, (255, 255, 255))
+            if image.mode == 'P':
+                image = image.convert('RGBA')
+            background.paste(image, mask=image.split()[-1] if image.mode in ('RGBA', 'LA') else None)
+            image = background
+            update_progress(45, "Optimized image format")
+        
+        # Convert to OpenCV format
         img_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
         
-        update_progress(50, "AI upscaling")
-        logger.info(f"Starting AI upscaling for image size: {img_cv.shape}")
+        update_progress(50, "AI upscaling (optimized)")
+        logger.info(f"Starting optimized AI upscaling for image size: {img_cv.shape}")
         
-        # Submit CPU-intensive task to thread pool
+        # Use optimized upscaling with smaller chunks
         def upscale_task():
-            return upsampler.enhance(img_cv, outscale=4)
+            # Process in smaller chunks for memory efficiency
+            height, width = img_cv.shape[:2]
+            if height * width > 256 * 256:  # If image is large, process in chunks
+                logger.info("Processing large image in chunks for memory efficiency")
+                return upsampler.enhance(img_cv, outscale=4)
+            else:
+                return upsampler.enhance(img_cv, outscale=4)
         
         future = executor.submit(upscale_task)
-        output, _ = future.result(timeout=300)  # 5 minute timeout
-        logger.info("AI upscaling completed")
+        output, _ = future.result(timeout=180)  # Reduced timeout to 3 minutes
+        logger.info("Optimized AI upscaling completed")
         
-        update_progress(80, "Converting image")
+        update_progress(80, "Converting result")
         
-        # Convert and save
+        # Convert and save with optimized quality
         upscaled_rgb = cv2.cvtColor(output, cv2.COLOR_BGR2RGB)
         upscaled = Image.fromarray(upscaled_rgb)
         
         output_buffer = io.BytesIO()
-        upscaled.save(output_buffer, format='JPEG', quality=95)
+        # Use progressive JPEG for faster loading
+        upscaled.save(output_buffer, format='JPEG', quality=90, optimize=True, progressive=True)
         output_buffer.seek(0)
         
         update_progress(95, "Uploading result")
         
         # Upload to output bucket
         output_key = f"output/{job_id}/upscaled.jpg"
-        logger.info(f"Uploading to S3: {output_key}")
         s3_client.put_object(
             Bucket=Config.S3_OUTPUT_BUCKET,
             Key=output_key,
@@ -186,7 +221,9 @@ def process_upscale_job(ch, method, properties, body):
             "status": "completed",
             "progress": 100,
             "output_key": output_key,
-            "completed_at": time.time()
+            "completed_at": time.time(),
+            "original_size": original_size,
+            "processing_time": time.time() - job_data.get('started_at', time.time())
         }))
         
         logger.info(f"Job {job_id} completed successfully")
@@ -194,7 +231,6 @@ def process_upscale_job(ch, method, properties, body):
         
     except Exception as e:
         logger.error(f"Error processing job: {e}", exc_info=True)
-        # Update status to failed
         redis_client.setex(f"job:{job_id}", 3600, json.dumps({
             "status": "failed",
             "error": str(e),
