@@ -15,12 +15,10 @@ class Config:
     # Upscaler Service
     UPSCALER_SERVICE_URL = os.getenv('UPSCALER_SERVICE_URL', 'http://upscaler-service:8083')
     
-    # Auth Service
-    AUTH_SERVICE_URL = os.getenv('AUTH_SERVICE_URL', 'http://auth-service:8082')
-    
     # RabbitMQ Configuration
     RABBITMQ_URL = os.getenv('RABBITMQ_URL', 'amqp://admin:admin123@localhost:5672/')
     
+    # Remove AUTH_SERVICE_URL
     # Redis Configuration
     REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379')
 

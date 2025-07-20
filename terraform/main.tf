@@ -335,12 +335,45 @@ resource "aws_lb" "main" {
   name               = "${var.project_name}-alb"
   internal           = false
   load_balancer_type = "application"
-  security_groups    = [aws_security_group.ecs_tasks.id]
+  security_groups    = [aws_security_group.alb.id]
   subnets            = aws_subnet.public[*].id
+
+  enable_deletion_protection = false
+
+  tags = {
+    Name = "${var.project_name}-alb"
+  }
 }
 
+resource "aws_security_group" "alb" {
+  name_prefix = "${var.project_name}-alb"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    protocol    = "tcp"
+    from_port   = 80
+    to_port     = 80
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    protocol    = "tcp"
+    from_port   = 443
+    to_port     = 443
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    protocol    = "-1"
+    from_port   = 0
+    to_port     = 0
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# Target groups
 resource "aws_lb_target_group" "ai_upscaler_api" {
-  name     = "${var.project_name}-api-tg"
+  name     = "${var.project_name}-api"
   port     = 8080
   protocol = "HTTP"
   vpc_id   = aws_vpc.main.id
@@ -349,15 +382,18 @@ resource "aws_lb_target_group" "ai_upscaler_api" {
   health_check {
     enabled             = true
     healthy_threshold   = 2
+    interval            = 30
+    matcher             = "200"
     path                = "/health"
     port                = "traffic-port"
     protocol            = "HTTP"
+    timeout             = 5
     unhealthy_threshold = 2
   }
 }
 
 resource "aws_lb_target_group" "upscaler_service" {
-  name     = "${var.project_name}-upscaler-tg"
+  name     = "${var.project_name}-upscaler"
   port     = 8083
   protocol = "HTTP"
   vpc_id   = aws_vpc.main.id
@@ -366,13 +402,57 @@ resource "aws_lb_target_group" "upscaler_service" {
   health_check {
     enabled             = true
     healthy_threshold   = 2
+    interval            = 30
+    matcher             = "200"
     path                = "/health"
     port                = "traffic-port"
     protocol            = "HTTP"
+    timeout             = 5
     unhealthy_threshold = 2
   }
 }
 
+resource "aws_lb_target_group" "prometheus" {
+  name     = "${var.project_name}-prometheus"
+  port     = 9090
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.main.id
+  target_type = "ip"
+
+  health_check {
+    enabled             = true
+    healthy_threshold   = 2
+    interval            = 30
+    matcher             = "200"
+    path                = "/-/healthy"
+    port                = "traffic-port"
+    protocol            = "HTTP"
+    timeout             = 5
+    unhealthy_threshold = 2
+  }
+}
+
+resource "aws_lb_target_group" "grafana" {
+  name     = "${var.project_name}-grafana"
+  port     = 3000
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.main.id
+  target_type = "ip"
+
+  health_check {
+    enabled             = true
+    healthy_threshold   = 2
+    interval            = 30
+    matcher             = "200"
+    path                = "/api/health"
+    port                = "traffic-port"
+    protocol            = "HTTP"
+    timeout             = 5
+    unhealthy_threshold = 2
+  }
+}
+
+# Main HTTP listener
 resource "aws_lb_listener" "main" {
   load_balancer_arn = aws_lb.main.arn
   port              = "80"
@@ -447,15 +527,15 @@ resource "aws_ecs_task_definition" "ai_upscaler_api" {
   family                   = "${var.project_name}-ai-upscaler-api"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = 256  # Reduced from 512
-  memory                   = 512  # Reduced from 1024
+  cpu                      = 1024
+  memory                   = 2048
   execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
   task_role_arn           = aws_iam_role.ecs_task_role.arn
 
   container_definitions = jsonencode([
     {
       name  = "ai-upscaler-api"
-      image = "${aws_ecr_repository.ai_upscaler_api.repository_url}:latest"
+      image = "314296197812.dkr.ecr.us-east-1.amazonaws.com/rabbitai-ai-upscaler-api:latest"
       portMappings = [
         {
           containerPort = 8080
@@ -466,6 +546,14 @@ resource "aws_ecs_task_definition" "ai_upscaler_api" {
         {
           name  = "AWS_DEFAULT_REGION"
           value = var.aws_region
+        },
+        {
+          name  = "AWS_ACCESS_KEY_ID"
+          value = aws_iam_access_key.app_user.id
+        },
+        {
+          name  = "AWS_SECRET_ACCESS_KEY"
+          value = aws_iam_access_key.app_user.secret
         },
         {
           name  = "S3_INPUT_BUCKET"
@@ -508,15 +596,15 @@ resource "aws_ecs_task_definition" "upscaler_service" {
   family                   = "${var.project_name}-upscaler-service"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = 512   # Reduced from 1024
-  memory                   = 1024  # Reduced from 2048
+  cpu                      = 2048
+  memory                   = 4096
   execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
   task_role_arn           = aws_iam_role.ecs_task_role.arn
 
   container_definitions = jsonencode([
     {
       name  = "upscaler-service"
-      image = "${aws_ecr_repository.upscaler_service.repository_url}:latest"
+      image = "314296197812.dkr.ecr.us-east-1.amazonaws.com/rabbitai-upscaler-service:latest"
       portMappings = [
         {
           containerPort = 8083
@@ -529,6 +617,14 @@ resource "aws_ecs_task_definition" "upscaler_service" {
           value = var.aws_region
         },
         {
+          name  = "AWS_ACCESS_KEY_ID"
+          value = aws_iam_access_key.app_user.id
+        },
+        {
+          name  = "AWS_SECRET_ACCESS_KEY"
+          value = aws_iam_access_key.app_user.secret
+        },
+        {
           name  = "S3_INPUT_BUCKET"
           value = aws_s3_bucket.input.bucket
         },
@@ -539,6 +635,14 @@ resource "aws_ecs_task_definition" "upscaler_service" {
         {
           name  = "S3_MODELS_BUCKET"
           value = aws_s3_bucket.models.bucket
+        },
+        {
+          name  = "RABBITMQ_URL"
+          value = "amqp://admin:${var.rabbitmq_password}@${aws_mq_broker.rabbitmq.instances[0].endpoints[0]}/"
+        },
+        {
+          name  = "REDIS_URL"
+          value = "redis://${aws_elasticache_replication_group.redis.primary_endpoint_address}:6379"
         }
       ]
       logConfiguration = {
@@ -827,14 +931,18 @@ resource "aws_security_group" "redis" {
 resource "aws_elasticache_replication_group" "redis" {
   replication_group_id       = "${var.project_name}-redis"
   description                = "Redis cluster for ${var.project_name}"
+  
+  node_type                  = "cache.t3.micro"
   port                       = 6379
   parameter_group_name       = "default.redis7"
-  node_type                  = "cache.t4g.micro"  # Cheaper ARM-based
-  num_cache_clusters         = 1                   # Single node
-  automatic_failover_enabled = false              # Disabled for cost
-  multi_az_enabled          = false               # Disabled for cost
-  subnet_group_name         = aws_elasticache_subnet_group.redis.name
-  security_group_ids        = [aws_security_group.redis.id]
+  
+  num_cache_clusters         = 1
+  
+  subnet_group_name          = aws_elasticache_subnet_group.redis.name
+  security_group_ids         = [aws_security_group.redis.id]
+  
+  at_rest_encryption_enabled = false
+  transit_encryption_enabled = false
 }
 
 # Amazon MQ (RabbitMQ)
@@ -843,23 +951,23 @@ resource "aws_security_group" "rabbitmq" {
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    from_port       = 5672
-    to_port         = 5672
-    protocol        = "tcp"
-    security_groups = [aws_security_group.ecs_tasks.id]
+    protocol    = "tcp"
+    from_port   = 5672
+    to_port     = 5672
+    cidr_blocks = [aws_vpc.main.cidr_block]
   }
 
   ingress {
-    from_port       = 15672
-    to_port         = 15672
-    protocol        = "tcp"
-    security_groups = [aws_security_group.ecs_tasks.id]
+    protocol    = "tcp"
+    from_port   = 15672
+    to_port     = 15672
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   egress {
+    protocol    = "-1"
     from_port   = 0
     to_port     = 0
-    protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
 }

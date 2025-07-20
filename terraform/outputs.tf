@@ -25,7 +25,38 @@ output "aws_region" {
 }
 
 output "load_balancer_dns" {
-  value = aws_lb.main.dns_name
+  description = "DNS name of the load balancer"
+  value       = aws_lb.main.dns_name
+}
+
+output "s3_buckets" {
+  description = "S3 bucket names"
+  value = {
+    input  = aws_s3_bucket.input.bucket
+    output = aws_s3_bucket.output.bucket
+    models = aws_s3_bucket.models.bucket
+  }
+}
+
+output "iam_access_key" {
+  description = "IAM access key for application"
+  value       = aws_iam_access_key.app_user.id
+}
+
+output "iam_secret_key" {
+  description = "IAM secret key for application"
+  value       = aws_iam_access_key.app_user.secret
+  sensitive   = true
+}
+
+output "rabbitmq_endpoint" {
+  description = "RabbitMQ broker endpoint"
+  value       = aws_mq_broker.rabbitmq.instances[0].endpoints[0]
+}
+
+output "redis_endpoint" {
+  description = "Redis cluster endpoint"
+  value       = aws_elasticache_replication_group.redis.primary_endpoint_address
 }
 
 output "prometheus_url" {
@@ -37,12 +68,12 @@ output "grafana_url" {
 }
 
 output "domain_urls" {
+  description = "Application URLs"
   value = {
-    main       = "https://${var.domain_name}"
-    api        = "https://api.${var.domain_name}"
-    grafana    = "https://grafana.${var.domain_name}:3001"
-    prometheus = "https://prometheus.${var.domain_name}:9091"
-    rabbitmq   = "https://rabbitmq.${var.domain_name}:15672"
+    main       = var.create_certificate ? "https://${var.domain_name}" : "http://${aws_lb.main.dns_name}"
+    api        = var.create_certificate ? "https://api.${var.domain_name}" : "http://${aws_lb.main.dns_name}:8080"
+    grafana    = var.create_certificate ? "https://grafana.${var.domain_name}" : "http://${aws_lb.main.dns_name}:3000"
+    prometheus = var.create_certificate ? "https://prometheus.${var.domain_name}" : "http://${aws_lb.main.dns_name}:9090"
   }
 }
 
