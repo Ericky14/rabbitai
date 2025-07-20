@@ -11,14 +11,25 @@ RUN apt-get update && apt-get install -y \
     libxext6 \
     libxrender-dev \
     libgomp1 \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
+# Copy requirements first for better caching
 COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir --upgrade pip
+
+# Install PyTorch CPU version first
+RUN pip install --no-cache-dir torch==2.0.1+cpu torchvision==0.15.2+cpu --index-url https://download.pytorch.org/whl/cpu
+
+# Install other requirements
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy weights directory
 COPY weights/ /app/weights/
 
+# Copy application code
 COPY . .
 
 EXPOSE 8083

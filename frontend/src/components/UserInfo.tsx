@@ -21,7 +21,7 @@ const UserInfo: React.FC<UserInfoProps> = ({ user, onSignOut }) => {
         </div>
       </div>
       <button 
-        className="apple-button-secondary text-sm"
+        className="apple-button-secondary text-sm shadow-md hover:shadow-lg"
         onClick={onSignOut}
       >
         Sign Out

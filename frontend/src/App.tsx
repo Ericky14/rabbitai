@@ -38,6 +38,23 @@ const App: React.FC = () => {
   const [dragOver, setDragOver] = useState<boolean>(false);
   const [showFallback, setShowFallback] = useState<boolean>(false);
   const [buttonLoaded, setButtonLoaded] = useState<boolean>(false);
+  const [isInitialized, setIsInitialized] = useState<boolean>(false);
+
+  // Load cached user on component mount
+  useEffect(() => {
+    const cachedUser = localStorage.getItem('ai-upscaler-user');
+    if (cachedUser) {
+      try {
+        const userData = JSON.parse(cachedUser);
+        setUser(userData);
+        console.log('Restored user from cache:', userData);
+      } catch (error) {
+        console.error('Failed to parse cached user:', error);
+        localStorage.removeItem('ai-upscaler-user');
+      }
+    }
+    setIsInitialized(true);
+  }, []);
 
   const renderGoogleFallbackButton = () => {
     setTimeout(() => {
@@ -62,8 +79,8 @@ const App: React.FC = () => {
   useEffect(() => {
     console.log('Google Client ID:', process.env.REACT_APP_GOOGLE_CLIENT_ID);
     
-    // Initialize Google Sign-In
-    if (window.google) {
+    // Only initialize Google Sign-In if user is not already signed in AND we've checked cache
+    if (!user && isInitialized && window.google) {
       window.google.accounts.id.cancel();
 
       setTimeout(() => {
@@ -81,20 +98,25 @@ const App: React.FC = () => {
             renderGoogleFallbackButton();
           }
         });
-      });
+      }, 100);
     }
-  }, []);
+  }, [user, isInitialized]);
 
   const handleGoogleSignIn = (response: GoogleCredentialResponse): void => {
     try {
       // Decode JWT token (in production, verify on backend)
       console.log('Google Sign-In Response:', response);
       const payload = JSON.parse(atob(response.credential.split('.')[1]));
-      setUser({
+      const userData = {
         name: payload.name,
         email: payload.email,
         picture: payload.picture
-      });
+      };
+      
+      setUser(userData);
+      // Cache user data in localStorage
+      localStorage.setItem('ai-upscaler-user', JSON.stringify(userData));
+      console.log('User data cached:', userData);
     } catch (error) {
       console.error('Failed to decode Google credential:', error);
     }
@@ -104,6 +126,14 @@ const App: React.FC = () => {
     setUser(null);
     setSelectedFile(null);
     setJobStatus(null);
+    setOriginalImageUrl(null);
+    // Clear cached user data
+    localStorage.removeItem('ai-upscaler-user');
+    console.log('User signed out and cache cleared');
+    // Cancel Google Sign-In session
+    if (window.google) {
+      window.google.accounts.id.cancel();
+    }
   };
 
   const handleFileSelect = (file: File): void => {
@@ -206,6 +236,17 @@ const App: React.FC = () => {
   };
   console.log('Button Loaded:', buttonLoaded);
 
+  const handleTestImage = async (): Promise<void> => {
+    try {
+      const response = await fetch('https://upload.wikimedia.org/wikipedia/en/thumb/a/af/Fallout.jpg/250px-Fallout.jpg');
+      const blob = await response.blob();
+      const file = new File([blob], 'Fallout.jpg', { type: 'image/jpeg' });
+      handleFileSelect(file);
+    } catch (error) {
+      console.error('Failed to load test image:', error);
+    }
+  };
+
   if (!user) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-400 via-purple-500 to-purple-700 flex items-center justify-center p-5">
@@ -267,6 +308,17 @@ const App: React.FC = () => {
             if (file) handleFileSelect(file);
           }}
         />
+
+        {!selectedFile && (
+          <div className="text-center mb-4">
+            <button 
+              className="apple-button-secondary text-sm"
+              onClick={handleTestImage}
+            >
+              Use Test Image
+            </button>
+          </div>
+        )}
 
         {selectedFile && (
           <button 

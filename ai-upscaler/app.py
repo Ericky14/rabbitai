@@ -16,9 +16,9 @@ app = FastAPI(title="AI Upscaler API")
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -106,12 +106,15 @@ async def download_upscaled_image(job_id: str):
     try:
         output_key = f"output/{job_id}/upscaled.jpg"
         
-        # Generate presigned URL for download
+        # Generate presigned URL for download with localhost endpoint
         download_url = s3_client.generate_presigned_url(
             'get_object',
             Params={'Bucket': Config.S3_OUTPUT_BUCKET, 'Key': output_key},
             ExpiresIn=3600  # 1 hour
         )
+        
+        # Replace the internal Docker hostname with localhost for browser access
+        download_url = download_url.replace('localstack:4566', 'localhost:4566')
         
         return {"download_url": download_url}
         

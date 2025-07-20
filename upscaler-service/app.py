@@ -13,7 +13,18 @@ import redis
 from config import Config
 import os
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI(title="AI Upscaler Service")
+
+# CORS configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:8080"],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+)
 
 # Initialize clients
 s3_client = boto3.client(
