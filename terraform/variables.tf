@@ -7,11 +7,37 @@ variable "aws_region" {
 variable "project_name" {
   description = "Project name for resource naming"
   type        = string
-  default     = "ai-upscaler"
+  default     = "rabbitai"
 }
 
 variable "environment" {
   description = "Environment (dev, staging, prod)"
   type        = string
   default     = "dev"
+}
+
+variable "rabbitmq_password" {
+  description = "Password for RabbitMQ admin user"
+  type        = string
+  sensitive   = true
+  default     = "admin123"
+}
+
+variable "grafana_password" {
+  description = "Password for Grafana admin user"
+  type        = string
+  sensitive   = true
+  default     = "admin123"
+}
+
+variable "domain_name" {
+  description = "Domain name for the application"
+  type        = string
+  default     = "fastrabbitai.com"
+}
+
+variable "create_certificate" {
+  description = "Whether to create SSL certificate"
+  type        = bool
+  default     = true
 }

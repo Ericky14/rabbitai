@@ -5,6 +5,7 @@ import GoogleSignInButton from './components/GoogleSignInButton';
 import UserInfo from './components/UserInfo';
 import UploadArea from './components/UploadArea';
 import JobStatusCard from './components/JobStatusCard';
+import ThreeBackground from './components/ThreeBackground';
 
 const API_BASE_URL = 'http://localhost:8080';
 
@@ -249,8 +250,9 @@ const App: React.FC = () => {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-400 via-purple-500 to-purple-700 flex items-center justify-center p-5">
-        <div className="glass-card rounded-3xl p-10 max-w-md w-full text-center">
+      <div className="min-h-screen relative flex items-center justify-center p-5">
+        <ThreeBackground />
+        <div className="glass-card rounded-3xl p-10 max-w-md w-full text-center relative z-10">
           <div className="text-4xl font-bold mb-3 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
             AI Upscaler
           </div>
@@ -275,8 +277,9 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-400 via-purple-500 to-purple-700 flex items-center justify-center p-5">
-      <div className="glass-card rounded-3xl p-10 max-w-4xl w-full">
+    <div className="min-h-screen relative flex items-center justify-center p-5">
+      <ThreeBackground />
+      <div className="glass-card rounded-3xl p-10 max-w-4xl w-full relative z-10">
         <UserInfo user={user} onSignOut={signOut} />
 
         <div className="text-center mb-8">

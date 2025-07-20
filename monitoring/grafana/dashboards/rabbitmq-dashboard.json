@@ -1,0 +1,112 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "RabbitMQ Monitoring",
+    "tags": ["rabbitmq", "messaging"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "RabbitMQ Overview",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "up{job=\"rabbitmq\"}",
+            "legendFormat": "Status"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": 0},
+                {"color": "green", "value": 1}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Total Messages",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "sum(rabbitmq_queue_messages)",
+            "legendFormat": "Messages"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "Message Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(rabbitmq_queue_messages_published_total[5m])",
+            "legendFormat": "Published/sec"
+          },
+          {
+            "expr": "rate(rabbitmq_queue_messages_delivered_total[5m])",
+            "legendFormat": "Delivered/sec"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4}
+      },
+      {
+        "id": 4,
+        "title": "Queue Depths",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rabbitmq_queue_messages",
+            "legendFormat": "{{queue}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4}
+      },
+      {
+        "id": 5,
+        "title": "Memory Usage",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rabbitmq_node_mem_used",
+            "legendFormat": "Used Memory"
+          },
+          {
+            "expr": "rabbitmq_node_mem_limit",
+            "legendFormat": "Memory Limit"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12}
+      },
+      {
+        "id": 6,
+        "title": "Connections & Channels",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rabbitmq_connections",
+            "legendFormat": "Connections"
+          },
+          {
+            "expr": "rabbitmq_channels",
+            "legendFormat": "Channels"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12}
+      }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "refresh": "5s"
+  }
+}

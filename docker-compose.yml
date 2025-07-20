@@ -133,6 +133,10 @@ services:
       - RABBIT_URL=http://rabbitmq:15672
       - RABBIT_USER=admin
       - RABBIT_PASSWORD=admin123
+      - RABBIT_CAPABILITIES=bert,no_sort
+      - PUBLISH_PORT=9419
+      - OUTPUT_FORMAT=TTY
+      - LOG_LEVEL=info
     depends_on:
       - rabbitmq
     networks:
