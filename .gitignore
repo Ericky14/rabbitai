@@ -42,6 +42,7 @@ dist/
 build/
 
 # IAC
-./terraform/.terraform
+.terraform
 terraform.tfvars
-./terraform/terraform.tfstate.*
+terraform.tfstate.*
+.terraform.lock.hcl

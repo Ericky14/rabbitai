@@ -40,6 +40,7 @@ const App: React.FC = () => {
   const [showFallback, setShowFallback] = useState<boolean>(false);
   const [buttonLoaded, setButtonLoaded] = useState<boolean>(false);
   const [isInitialized, setIsInitialized] = useState<boolean>(false);
+  const [pollingTimeoutId, setPollingTimeoutId] = useState<NodeJS.Timeout | null>(null);
 
   // Load cached user on component mount
   useEffect(() => {
@@ -77,9 +78,7 @@ const App: React.FC = () => {
     }, 100);
   };
 
-  useEffect(() => {
-    console.log('Google Client ID:', process.env.REACT_APP_GOOGLE_CLIENT_ID);
-    
+  useEffect(() => {    
     // Only initialize Google Sign-In if user is not already signed in AND we've checked cache
     if (!user && isInitialized && window.google) {
       window.google.accounts.id.cancel();
@@ -152,6 +151,12 @@ const App: React.FC = () => {
   };
 
   const clearSelectedFile = (): void => {
+    // Cancel any ongoing polling
+    if (pollingTimeoutId) {
+      clearTimeout(pollingTimeoutId);
+      setPollingTimeoutId(null);
+    }
+    
     setSelectedFile(null);
     setJobStatus(null);
     setOriginalImageUrl(null);
@@ -207,35 +212,76 @@ const App: React.FC = () => {
     }
   };
 
+  const transformS3Url = (url: string): string => {
+    // Replace localstack:4566 with localhost:4566 for browser access
+    return url.replace('localstack:4566', 'localhost:4566');
+  };
+
   const pollJobStatus = async (jobId: string): Promise<void> => {
     const maxAttempts = 30;
     let attempts = 0;
 
     const poll = async (): Promise<void> => {
       try {
-        const response = await axios.get<DownloadResponse>(`${API_BASE_URL}/download/${jobId}`);
-        setJobStatus(prev => prev ? {
-          ...prev,
-          status: 'completed',
-          downloadUrl: response.data.download_url
-        } : null);
+        const statusResponse = await axios.get<{status: string, error?: string, progress?: number, stage?: string}>(`${API_BASE_URL}/status/${jobId}`);
+        
+        if (statusResponse.data.status === 'completed') {
+          const downloadResponse = await axios.get<DownloadResponse>(`${API_BASE_URL}/download/${jobId}`);
+          setJobStatus(prev => prev ? {
+            ...prev,
+            status: 'completed',
+            downloadUrl: transformS3Url(downloadResponse.data.download_url)
+          } : null);
+          setPollingTimeoutId(null);
+        } else if (statusResponse.data.status === 'failed') {
+          setJobStatus(prev => prev ? {
+            ...prev,
+            status: 'failed',
+            error: statusResponse.data.error || 'Processing failed'
+          } : null);
+          setPollingTimeoutId(null);
+        } else {
+          // Update progress and stage from status response
+          setJobStatus(prev => prev ? {
+            ...prev,
+            status: 'processing',
+            progress: statusResponse.data.progress,
+            stage: statusResponse.data.stage
+          } : null);
+          
+          // Still processing, continue polling
+          attempts++;
+          if (attempts < maxAttempts) {
+            const timeoutId = setTimeout(poll, 2000);
+            setPollingTimeoutId(timeoutId);
+          } else {
+            setJobStatus(prev => prev ? {
+              ...prev,
+              status: 'failed',
+              error: 'Processing timeout'
+            } : null);
+            setPollingTimeoutId(null);
+          }
+        }
       } catch (error) {
         attempts++;
         if (attempts < maxAttempts) {
-          setTimeout(poll, 2000);
+          const timeoutId = setTimeout(poll, 2000);
+          setPollingTimeoutId(timeoutId);
         } else {
           setJobStatus(prev => prev ? {
             ...prev,
             status: 'failed',
             error: 'Processing timeout'
           } : null);
+          setPollingTimeoutId(null);
         }
       }
     };
 
-    setTimeout(poll, 2000);
+    const timeoutId = setTimeout(poll, 2000);
+    setPollingTimeoutId(timeoutId);
   };
-  console.log('Button Loaded:', buttonLoaded);
 
   const handleTestImage = async (): Promise<void> => {
     try {
@@ -247,6 +293,15 @@ const App: React.FC = () => {
       console.error('Failed to load test image:', error);
     }
   };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingTimeoutId) {
+        clearTimeout(pollingTimeoutId);
+      }
+    };
+  }, [pollingTimeoutId]);
 
   if (!user) {
     return (

@@ -12,6 +12,8 @@ export interface JobStatus {
   processing_time?: number;
   downloadUrl?: string;
   error?: string;
+  progress?: number;
+  stage?: string;
 }
 
 export interface GoogleCredentialResponse {

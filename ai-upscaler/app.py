@@ -12,6 +12,15 @@ from analytics import analytics_client
 from metrics import metrics
 import time
 import redis
+import pika
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="AI Upscaler API")
 
@@ -75,22 +84,52 @@ async def get_metrics():
     """Prometheus metrics endpoint"""
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
+# Add RabbitMQ connection
+def publish_to_queue(message, queue_name):
+    """Publish message to RabbitMQ queue"""
+    logger.info(f"Attempting to publish message to queue '{queue_name}': {message}")
+    try:
+        connection = pika.BlockingConnection(pika.URLParameters(Config.RABBITMQ_URL))
+        logger.info(f"Connected to RabbitMQ: {Config.RABBITMQ_URL}")
+        
+        channel = connection.channel()
+        channel.queue_declare(queue=queue_name, durable=True)
+        logger.info(f"Queue '{queue_name}' declared successfully")
+        
+        channel.basic_publish(
+            exchange='',
+            routing_key=queue_name,
+            body=json.dumps(message),
+            properties=pika.BasicProperties(delivery_mode=2)  # Make message persistent
+        )
+        logger.info(f"Message published successfully to queue '{queue_name}'")
+        connection.close()
+        logger.info("RabbitMQ connection closed")
+        
+    except Exception as e:
+        logger.error(f"Failed to publish message to RabbitMQ: {e}", exc_info=True)
+        raise
+
 @app.post("/upscale")
 async def upscale_image(file: UploadFile = File(...)):
     start_time = time.time()
     job_id = str(uuid.uuid4())
+    
+    logger.info(f"Starting upscale job {job_id} for file: {file.filename}")
     
     try:
         # Upload file to S3
         file_content = await file.read()
         s3_input_key = f"input/{job_id}/{file.filename}"
         
+        logger.info(f"Uploading file to S3: {s3_input_key}")
         s3_client.put_object(
             Bucket=Config.S3_INPUT_BUCKET,
             Key=s3_input_key,
             Body=file_content,
             ContentType=file.content_type
         )
+        logger.info(f"File uploaded to S3 successfully")
         
         # Send job to RabbitMQ queue
         job_payload = {
@@ -101,14 +140,18 @@ async def upscale_image(file: UploadFile = File(...)):
             "created_at": time.time()
         }
         
+        logger.info(f"Preparing to publish job to RabbitMQ: {job_payload}")
+        
         # Publish to processing queue
-        await analytics_client._publish_event(job_payload)
+        publish_to_queue(job_payload, 'upscale_jobs')
+        logger.info(f"Job {job_id} published to upscale_jobs queue")
         
         # Set initial status in Redis
         redis_client.setex(f"job:{job_id}", 3600, json.dumps({
             "status": "queued",
             "created_at": time.time()
         }))
+        logger.info(f"Job {job_id} status set to 'queued' in Redis")
         
         return {
             "job_id": job_id,
@@ -117,7 +160,7 @@ async def upscale_image(file: UploadFile = File(...)):
         }
         
     except Exception as e:
-        print(f"Upload error: {str(e)}")
+        logger.error(f"Upload error for job {job_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 @app.get("/status/{job_id}")
@@ -136,15 +179,12 @@ async def download_upscaled_image(job_id: str):
     try:
         output_key = f"output/{job_id}/upscaled.jpg"
         
-        # Generate presigned URL for download with localhost endpoint
+        # Generate presigned URL for download
         download_url = s3_client.generate_presigned_url(
             'get_object',
             Params={'Bucket': Config.S3_OUTPUT_BUCKET, 'Key': output_key},
             ExpiresIn=3600  # 1 hour
         )
-        
-        # Replace the internal Docker hostname with localhost for browser access
-        download_url = download_url.replace('localstack:4566', 'localhost:4566')
         
         return {"download_url": download_url}
         

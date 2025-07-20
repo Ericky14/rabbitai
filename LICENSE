@@ -1,0 +1,93 @@
+MIT License
+
+Copyright (c) 2025 RabbitAI Project
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+THIRD-PARTY LICENSES:
+
+This project incorporates the following third-party software:
+
+Real-ESRGAN Model:
+- Copyright (c) 2021 Tencent ARC Lab
+- Licensed under BSD 3-Clause License
+- https://github.com/xinntao/Real-ESRGAN
+
+FastAPI:
+- Copyright (c) 2018 Sebastián Ramírez
+- Licensed under MIT License
+- https://github.com/tiangolo/fastapi
+
+React:
+- Copyright (c) Meta Platforms, Inc. and affiliates
+- Licensed under MIT License
+- https://github.com/facebook/react
+
+Tailwind CSS:
+- Copyright (c) Tailwind Labs, Inc.
+- Licensed under MIT License
+- https://github.com/tailwindlabs/tailwindcss
+
+Docker:
+- Copyright (c) Docker, Inc.
+- Licensed under Apache License 2.0
+- https://github.com/docker
+
+Prometheus:
+- Copyright (c) The Prometheus Authors
+- Licensed under Apache License 2.0
+- https://github.com/prometheus/prometheus
+
+Grafana:
+- Copyright (c) Grafana Labs
+- Licensed under AGPL v3.0
+- https://github.com/grafana/grafana
+
+RabbitMQ:
+- Copyright (c) VMware, Inc. or its affiliates
+- Licensed under Mozilla Public License 2.0
+- https://github.com/rabbitmq/rabbitmq-server
+
+Redis:
+- Copyright (c) Redis Ltd.
+- Licensed under BSD 3-Clause License
+- https://github.com/redis/redis
+
+AWS SDK and Services:
+- Copyright (c) Amazon Web Services, Inc.
+- Licensed under Apache License 2.0
+- https://aws.amazon.com/
+
+Terraform:
+- Copyright (c) HashiCorp, Inc.
+- Licensed under Mozilla Public License 2.0
+- https://github.com/hashicorp/terraform
+
+---
+
+AI DEVELOPMENT NOTICE:
+
+This project was developed with significant assistance from Augment AI, an AI code 
+assistant. While the AI contributed substantially to the codebase, architecture, 
+and documentation, all code is provided under the same MIT license terms above.
+
+The use of AI in development does not affect the licensing terms or the rights 
+granted to users of this software.

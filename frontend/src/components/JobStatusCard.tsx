@@ -7,6 +7,42 @@ interface JobStatusCardProps {
 }
 
 const JobStatusCard: React.FC<JobStatusCardProps> = ({ jobStatus, originalImageUrl }) => {
+  const [imageRetryCount, setImageRetryCount] = React.useState(0);
+  const [imageError, setImageError] = React.useState(false);
+  const maxRetries = 3;
+
+  const handleImageError = () => {
+    if (imageRetryCount < maxRetries) {
+      setImageRetryCount(prev => prev + 1);
+      // Force reload by adding timestamp to URL
+      setTimeout(() => {
+        setImageError(false);
+      }, 1000 * (imageRetryCount + 1)); // Exponential backoff
+    } else {
+      setImageError(true);
+    }
+  };
+
+  const handleImageLoad = () => {
+    setImageRetryCount(0);
+    setImageError(false);
+  };
+
+  // Reset retry count when downloadUrl changes
+  React.useEffect(() => {
+    setImageRetryCount(0);
+    setImageError(false);
+  }, [jobStatus.downloadUrl]);
+
+  const getImageUrl = () => {
+    if (!jobStatus.downloadUrl) return '';
+    // Add timestamp to force reload on retry
+    const separator = jobStatus.downloadUrl.includes('?') ? '&' : '?';
+    return imageRetryCount > 0 
+      ? `${jobStatus.downloadUrl}${separator}_retry=${imageRetryCount}&t=${Date.now()}`
+      : jobStatus.downloadUrl;
+  };
+
   const getStatusBadge = () => {
     switch (jobStatus.status) {
       case 'processing':
@@ -42,8 +78,17 @@ const JobStatusCard: React.FC<JobStatusCardProps> = ({ jobStatus, originalImageU
       </div>
       
       {jobStatus.status === 'processing' && (
-        <div className="w-full bg-gray-200 rounded-full h-1 mb-4">
-          <div className="bg-gradient-to-r from-blue-500 to-purple-600 h-1 rounded-full w-3/5 animate-pulse"></div>
+        <div className="space-y-2">
+          <div className="flex justify-between text-sm text-gray-600">
+            <span>{jobStatus.stage || 'Processing...'}</span>
+            <span>{jobStatus.progress || 0}%</span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div 
+              className="bg-gradient-to-r from-blue-500 to-purple-600 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${jobStatus.progress || 0}%` }}
+            ></div>
+          </div>
         </div>
       )}
 
@@ -66,11 +111,25 @@ const JobStatusCard: React.FC<JobStatusCardProps> = ({ jobStatus, originalImageU
             <div className="space-y-2">
               <h3 className="text-sm font-medium text-gray-700 text-center">AI Enhanced (4x)</h3>
               <div className="rounded-xl overflow-hidden shadow-lg bg-white">
-                <img 
-                  src={jobStatus.downloadUrl} 
-                  alt="AI Enhanced" 
-                  className="w-full h-auto"
-                />
+                {imageError ? (
+                  <div className="w-full h-48 flex items-center justify-center bg-gray-100 text-gray-500">
+                    Failed to load image after {maxRetries} attempts
+                  </div>
+                ) : (
+                  <img 
+                    src={getImageUrl()}
+                    alt="AI Enhanced" 
+                    className="w-full h-auto"
+                    onError={handleImageError}
+                    onLoad={handleImageLoad}
+                  />
+                )}
+                {imageRetryCount > 0 && imageRetryCount <= maxRetries && !imageError && (
+                  <div className="flex items-center justify-center gap-2 text-xs text-gray-500 p-2">
+                    <div className="w-4 h-4 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin"></div>
+                    Loading...
+                  </div>
+                )}
               </div>
             </div>
           </div>

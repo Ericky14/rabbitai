@@ -17,26 +17,43 @@ events_processed_total = Counter(
 
 class AnalyticsService:
     def __init__(self):
-        self.setup_rabbitmq()
+        self.connection = None
+        self.channel = None
     
     def setup_rabbitmq(self):
         """Setup RabbitMQ consumer for analytics events"""
-        connection = pika.BlockingConnection(
-            pika.URLParameters(os.getenv('RABBITMQ_URL'))
-        )
-        self.channel = connection.channel()
-        self.channel.queue_declare(queue='analytics_events')
-        self.channel.basic_consume(
-            queue='analytics_events',
-            on_message_callback=self.process_analytics_event,
-            auto_ack=True
-        )
+        try:
+            if not self.connection or self.connection.is_closed:
+                self.connection = pika.BlockingConnection(
+                    pika.URLParameters(os.getenv('RABBITMQ_URL'))
+                )
+                self.channel = self.connection.channel()
+                self.channel.queue_declare(queue='analytics_events')
+                self.channel.basic_consume(
+                    queue='analytics_events',
+                    on_message_callback=self.process_analytics_event,
+                    auto_ack=True
+                )
+                print("Connected to RabbitMQ successfully")
+        except Exception as e:
+            print(f"Failed to connect to RabbitMQ: {e}")
+            self.connection = None
+            self.channel = None
+    
+    def start_consuming(self):
+        """Start consuming messages from RabbitMQ"""
+        try:
+            self.setup_rabbitmq()
+            if self.channel:
+                print("Starting to consume analytics events...")
+                self.channel.start_consuming()
+        except Exception as e:
+            print(f"Error consuming messages: {e}")
     
     def process_analytics_event(self, ch, method, properties, body):
         """Process analytics events from queue"""
         try:
             event = json.loads(body)
-            # Just record metrics, no storage needed
             events_processed_total.labels(event_type=event['event_type'], status='success').inc()
             print(f"Processed analytics event: {event['event_type']}")
         except Exception as e:
@@ -44,6 +61,14 @@ class AnalyticsService:
             print(f"Failed to process analytics event: {e}")
 
 analytics_service = AnalyticsService()
+
+# Start consuming in a background thread
+import threading
+def start_consumer():
+    analytics_service.start_consuming()
+
+consumer_thread = threading.Thread(target=start_consumer, daemon=True)
+consumer_thread.start()
 
 @app.get("/metrics")
 async def get_metrics():
