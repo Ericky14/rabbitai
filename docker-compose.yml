@@ -13,8 +13,8 @@ services:
       - LAMBDA_REMOTE_DOCKER=false
     volumes:
       - "localstack_data:/var/lib/localstack"
-      - "/var/run/docker.sock:/var/run/docker.sock"
-      - "./lambda-functions:/tmp/lambda-functions"
+      - "/var/run/docker.sock:/var/run/docker.sock:Z"
+      - "./lambda-functions:/opt/code/localstack/lambda-functions:Z"
     networks:
       - ai-upscaler
 
@@ -42,12 +42,12 @@ services:
     networks:
       - ai-upscaler
 
-  ai-upscaler-api:
+  upscaler-service:
     build:
-      context: ./ai-upscaler
+      context: ./upscaler-service
       dockerfile: Dockerfile
     ports:
-      - "8080:8080"
+      - "8083:8083"
     environment:
       - AWS_ENDPOINT_URL=http://localstack:4566
       - AWS_ACCESS_KEY_ID=test
@@ -55,26 +55,22 @@ services:
       - AWS_DEFAULT_REGION=us-east-1
       - RABBITMQ_URL=amqp://admin:admin123@rabbitmq:5672/
       - REDIS_URL=redis://redis:6379
-      - ANALYTICS_SERVICE_URL=http://analytics-service:8081
-      - COGNITO_USER_POOL_ID=local_pool
-      - COGNITO_CLIENT_ID=local_client
     depends_on:
       - localstack
       - rabbitmq
       - redis
-      - analytics-service
     networks:
       - ai-upscaler
     develop:
       watch:
         - action: sync
-          path: ./ai-upscaler
+          path: ./upscaler-service
           target: /app
           ignore:
             - __pycache__/
             - "*.pyc"
         - action: rebuild
-          path: ./ai-upscaler/requirements.txt
+          path: ./upscaler-service/requirements.txt
 
   analytics-service:
     build:
@@ -117,7 +113,7 @@ services:
   grafana:
     image: grafana/grafana:latest
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin123
     volumes:
@@ -141,6 +137,75 @@ services:
       - rabbitmq
     networks:
       - ai-upscaler
+
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    ports:
+      - "9121:9121"
+    environment:
+      - REDIS_ADDR=redis://redis:6379
+    depends_on:
+      - redis
+    networks:
+      - ai-upscaler
+
+  ai-upscaler-api:
+    build:
+      context: ./ai-upscaler
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+      - UPSCALER_SERVICE_URL=http://upscaler-service:8083
+      - RABBITMQ_URL=amqp://admin:admin123@rabbitmq:5672/
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - localstack
+      - upscaler-service
+      - rabbitmq
+      - redis
+    networks:
+      - ai-upscaler
+    develop:
+      watch:
+        - action: sync
+          path: ./ai-upscaler
+          target: /app
+          ignore:
+            - __pycache__/
+            - "*.pyc"
+        - action: rebuild
+          path: ./ai-upscaler/requirements.txt
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8080
+      - REACT_APP_GOOGLE_CLIENT_ID=62604448035-fm1lab6s9oktl8utp85pod1ir2e6cmeg.apps.googleusercontent.com
+    depends_on:
+      - ai-upscaler-api
+    networks:
+      - ai-upscaler
+    develop:
+      watch:
+        - action: sync
+          path: ./frontend/src
+          target: /app/src
+        - action: sync
+          path: ./frontend/public
+          target: /app/public
+        - action: rebuild
+          path: ./frontend/package.json
+        - action: rebuild
+          path: ./frontend/pnpm-lock.yaml
 
 volumes:
   rabbitmq_data:

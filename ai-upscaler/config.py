@@ -12,26 +12,15 @@ class Config:
     S3_OUTPUT_BUCKET = 'ai-upscaler-output'
     S3_MODELS_BUCKET = 'ai-upscaler-models'
     
-    # Lambda Functions
-    UPSCALER_LAMBDA_FUNCTION = 'ai-upscaler-worker'
+    # Upscaler Service
+    UPSCALER_SERVICE_URL = os.getenv('UPSCALER_SERVICE_URL', 'http://upscaler-service:8083')
     
     # RabbitMQ Configuration
     RABBITMQ_URL = os.getenv('RABBITMQ_URL', 'amqp://admin:admin123@localhost:5672/')
     
     # Redis Configuration
     REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379')
-    
-    # Analytics Service
-    ANALYTICS_SERVICE_URL = os.getenv('ANALYTICS_SERVICE_URL', 'http://localhost:8081')
-    
-    # Cognito Configuration
-    COGNITO_USER_POOL_ID = os.getenv('COGNITO_USER_POOL_ID', 'local_pool')
-    COGNITO_CLIENT_ID = os.getenv('COGNITO_CLIENT_ID', 'local_client')
-    COGNITO_REGION = AWS_DEFAULT_REGION
-    
-    # Google OAuth
-    GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '')
-    GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET', '')
+
 
 
 

@@ -1,24 +1,9 @@
-import requests
-import pika
 import json
 from config import Config
 
 class AnalyticsClient:
     def __init__(self):
-        self.analytics_url = Config.ANALYTICS_SERVICE_URL
-        self.setup_rabbitmq()
-    
-    def setup_rabbitmq(self):
-        """Setup RabbitMQ publisher for analytics events"""
-        try:
-            connection = pika.BlockingConnection(
-                pika.URLParameters(Config.RABBITMQ_URL)
-            )
-            self.channel = connection.channel()
-            self.channel.queue_declare(queue='analytics_events')
-        except Exception as e:
-            print(f"Failed to setup RabbitMQ: {e}")
-            self.channel = None
+        self.rabbitmq_url = Config.RABBITMQ_URL
     
     async def log_upscale_request(self, user_id: str, job_id: str, file_size: int, file_type: str):
         """Log upscale request via message queue"""
@@ -42,14 +27,10 @@ class AnalyticsClient:
         await self._publish_event(event)
     
     async def _publish_event(self, event: dict):
-        """Publish event to RabbitMQ queue"""
+        """Publish event to RabbitMQ"""
         try:
-            if self.channel:
-                self.channel.basic_publish(
-                    exchange='',
-                    routing_key='analytics_events',
-                    body=json.dumps(event)
-                )
+            # For now, just log the event
+            print(f"Analytics event: {json.dumps(event)}")
         except Exception as e:
             print(f"Failed to publish analytics event: {e}")
 
