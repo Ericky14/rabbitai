@@ -11,6 +11,7 @@ import json
 from analytics import analytics_client
 from metrics import metrics
 import time
+import redis
 
 app = FastAPI(title="AI Upscaler API")
 
@@ -40,6 +41,9 @@ if Config.AWS_ENDPOINT_URL and 'localhost' in Config.AWS_ENDPOINT_URL:
     s3_client_config['endpoint_url'] = Config.AWS_ENDPOINT_URL
 
 s3_client = boto3.client('s3', **s3_client_config)
+
+# Initialize Redis client
+redis_client = redis.from_url(Config.REDIS_URL)
 
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):
@@ -98,7 +102,7 @@ async def upscale_image(file: UploadFile = File(...)):
         }
         
         # Publish to processing queue
-        await analytics_client._publish_event_to_queue(job_payload, 'upscale_jobs')
+        await analytics_client._publish_event(job_payload)
         
         # Set initial status in Redis
         redis_client.setex(f"job:{job_id}", 3600, json.dumps({
