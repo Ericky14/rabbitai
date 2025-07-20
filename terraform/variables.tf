@@ -20,7 +20,7 @@ variable "rabbitmq_password" {
   description = "Password for RabbitMQ admin user"
   type        = string
   sensitive   = true
-  default     = "admin123"
+  default     = "admin123123123"
 }
 
 variable "grafana_password" {
@@ -40,4 +40,10 @@ variable "create_certificate" {
   description = "Whether to create SSL certificate"
   type        = bool
   default     = true
+}
+
+variable "google_client_id" {
+  description = "Google OAuth Client ID for authentication"
+  type        = string
+  sensitive   = true
 }

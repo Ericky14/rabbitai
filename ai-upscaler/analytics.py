@@ -29,13 +29,16 @@ class AnalyticsClient:
         """Ensure RabbitMQ connection is established"""
         if not self.connection or self.connection.is_closed:
             try:
+                print(f"Attempting to connect to RabbitMQ: {self.rabbitmq_url}")
                 self.connection = pika.BlockingConnection(
                     pika.URLParameters(self.rabbitmq_url)
                 )
                 self.channel = self.connection.channel()
                 self.channel.queue_declare(queue='analytics_events', durable=True)
+                print("Successfully connected to RabbitMQ")
             except Exception as e:
                 print(f"Failed to connect to RabbitMQ: {e}")
+                print(f"RabbitMQ URL: {self.rabbitmq_url}")
                 self.connection = None
                 self.channel = None
     

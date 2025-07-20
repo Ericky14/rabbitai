@@ -16,6 +16,7 @@ fi
 AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID:?'AWS_ACCOUNT_ID is not set'}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
 ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+PROJECT_NAME="${PROJECT_NAME:-rabbitai}"
 
 echo "Using AWS Account ID: ${AWS_ACCOUNT_ID}"
 echo "Using AWS Region: ${AWS_REGION}"
@@ -40,6 +41,20 @@ echo "Building and pushing Upscaler Service..."
 docker build -t upscaler-service ./upscaler-service
 docker tag upscaler-service:latest ${ECR_REGISTRY}/rabbitai-upscaler-service:latest
 docker push ${ECR_REGISTRY}/rabbitai-upscaler-service:latest
+
+# Build frontend
+echo "Building frontend..."
+cd frontend
+npm run build
+cd ..
+
+# Upload frontend to S3
+echo "Uploading frontend to S3..."
+aws s3 sync frontend/build/ s3://${PROJECT_NAME}-frontend --delete
+
+# Invalidate CloudFront cache
+echo "Invalidating CloudFront cache..."
+aws cloudfront create-invalidation --distribution-id $(aws cloudfront list-distributions --query "DistributionList.Items[?Comment=='${PROJECT_NAME}-frontend'].Id" --output text) --paths "/*"
 
 echo "All images pushed successfully!"
 echo "ECR Images:"

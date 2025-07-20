@@ -261,47 +261,6 @@ resource "aws_security_group" "monitoring" {
   }
 }
 
-# ECS Task Execution Role
-resource "aws_iam_role" "ecs_task_execution_role" {
-  name = "${var.project_name}-ecs-task-execution-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "ecs-tasks.amazonaws.com"
-        }
-      }
-    ]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "ecs_task_execution_role_policy" {
-  role       = aws_iam_role.ecs_task_execution_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-}
-
-# ECS Task Role
-resource "aws_iam_role" "ecs_task_role" {
-  name = "${var.project_name}-ecs-task-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "ecs-tasks.amazonaws.com"
-        }
-      }
-    ]
-  })
-}
-
 resource "aws_iam_role_policy" "ecs_task_s3_policy" {
   name = "${var.project_name}-ecs-task-s3-policy"
   role = aws_iam_role.ecs_task_role.id
@@ -363,6 +322,13 @@ resource "aws_security_group" "alb" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  ingress {
+    protocol    = "tcp"
+    from_port   = 8083
+    to_port     = 8083
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   egress {
     protocol    = "-1"
     from_port   = 0
@@ -412,55 +378,30 @@ resource "aws_lb_target_group" "upscaler_service" {
   }
 }
 
-resource "aws_lb_target_group" "prometheus" {
-  name     = "${var.project_name}-prometheus"
-  port     = 9090
-  protocol = "HTTP"
-  vpc_id   = aws_vpc.main.id
-  target_type = "ip"
-
-  health_check {
-    enabled             = true
-    healthy_threshold   = 2
-    interval            = 30
-    matcher             = "200"
-    path                = "/-/healthy"
-    port                = "traffic-port"
-    protocol            = "HTTP"
-    timeout             = 5
-    unhealthy_threshold = 2
-  }
-}
-
-resource "aws_lb_target_group" "grafana" {
-  name     = "${var.project_name}-grafana"
-  port     = 3000
-  protocol = "HTTP"
-  vpc_id   = aws_vpc.main.id
-  target_type = "ip"
-
-  health_check {
-    enabled             = true
-    healthy_threshold   = 2
-    interval            = 30
-    matcher             = "200"
-    path                = "/api/health"
-    port                = "traffic-port"
-    protocol            = "HTTP"
-    timeout             = 5
-    unhealthy_threshold = 2
-  }
-}
-
-# Main HTTP listener
+# Main HTTP listener - redirect to HTTPS if certificate exists, otherwise forward
 resource "aws_lb_listener" "main" {
   load_balancer_arn = aws_lb.main.arn
   port              = "80"
   protocol          = "HTTP"
 
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.ai_upscaler_api.arn
+  dynamic "default_action" {
+    for_each = var.create_certificate ? [1] : []
+    content {
+      type = "redirect"
+      redirect {
+        port        = "443"
+        protocol    = "HTTPS"
+        status_code = "HTTP_301"
+      }
+    }
+  }
+
+  dynamic "default_action" {
+    for_each = var.create_certificate ? [] : [1]
+    content {
+      type             = "forward"
+      target_group_arn = aws_lb_target_group.ai_upscaler_api.arn
+    }
   }
 }
 
@@ -569,11 +510,11 @@ resource "aws_ecs_task_definition" "ai_upscaler_api" {
         },
         {
           name  = "UPSCALER_SERVICE_URL"
-          value = "http://upscaler-service.${var.project_name}.local:8083"
+          value = "http://${aws_service_discovery_service.upscaler_service.name}.${aws_service_discovery_private_dns_namespace.main.name}:8083"
         },
         {
           name  = "RABBITMQ_URL"
-          value = "amqp://admin:${var.rabbitmq_password}@${aws_mq_broker.rabbitmq.instances[0].endpoints[0]}/"
+          value = "amqps://admin:${var.rabbitmq_password}@${replace(aws_mq_broker.rabbitmq.instances[0].endpoints[0], "amqps://", "")}/"
         },
         {
           name  = "REDIS_URL"
@@ -638,7 +579,7 @@ resource "aws_ecs_task_definition" "upscaler_service" {
         },
         {
           name  = "RABBITMQ_URL"
-          value = "amqp://admin:${var.rabbitmq_password}@${aws_mq_broker.rabbitmq.instances[0].endpoints[0]}/"
+          value = "amqps://admin:${var.rabbitmq_password}@${replace(aws_mq_broker.rabbitmq.instances[0].endpoints[0], "amqps://", "")}/"
         },
         {
           name  = "REDIS_URL"
@@ -670,8 +611,12 @@ resource "aws_ecs_task_definition" "prometheus" {
   volume {
     name = "prometheus-data"
     efs_volume_configuration {
-      file_system_id = aws_efs_file_system.monitoring.id
-      root_directory = "/prometheus"
+      file_system_id     = aws_efs_file_system.monitoring.id
+      transit_encryption = "ENABLED"
+      authorization_config {
+        access_point_id = aws_efs_access_point.prometheus.id
+        iam             = "ENABLED"
+      }
     }
   }
 
@@ -718,18 +663,11 @@ resource "aws_ecs_task_definition" "grafana" {
   execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
   task_role_arn           = aws_iam_role.ecs_task_role.arn
 
-  volume {
-    name = "grafana-data"
-    efs_volume_configuration {
-      file_system_id = aws_efs_file_system.monitoring.id
-      root_directory = "/grafana"
-    }
-  }
-
   container_definitions = jsonencode([
     {
       name  = "grafana"
       image = "grafana/grafana:latest"
+      user  = "0:0"  # Run as root to fix permissions
       portMappings = [
         {
           containerPort = 3000
@@ -740,6 +678,10 @@ resource "aws_ecs_task_definition" "grafana" {
         {
           name  = "GF_SECURITY_ADMIN_PASSWORD"
           value = var.grafana_password
+        },
+        {
+          name  = "GF_INSTALL_PLUGINS"
+          value = ""
         }
       ]
       mountPoints = [
@@ -758,6 +700,18 @@ resource "aws_ecs_task_definition" "grafana" {
       }
     }
   ])
+
+  volume {
+    name = "grafana-data"
+    efs_volume_configuration {
+      file_system_id     = aws_efs_file_system.monitoring.id
+      transit_encryption = "ENABLED"
+      authorization_config {
+        access_point_id = aws_efs_access_point.grafana.id
+        iam             = "ENABLED"
+      }
+    }
+  }
 }
 
 # CloudWatch Log Group
@@ -802,13 +756,17 @@ resource "aws_ecs_service" "upscaler_service" {
     assign_public_ip = true
   }
 
+  service_registries {
+    registry_arn = aws_service_discovery_service.upscaler_service.arn
+  }
+
   load_balancer {
     target_group_arn = aws_lb_target_group.upscaler_service.arn
     container_name   = "upscaler-service"
     container_port   = 8083
   }
 
-  depends_on = [aws_lb_listener.main]
+  depends_on = [aws_lb_listener.upscaler_service]
 }
 
 # ECS Services for Monitoring
@@ -951,6 +909,13 @@ resource "aws_security_group" "rabbitmq" {
   vpc_id      = aws_vpc.main.id
 
   ingress {
+    protocol        = "tcp"
+    from_port       = 5671
+    to_port         = 5671
+    security_groups = [aws_security_group.ecs_tasks.id]
+  }
+
+  ingress {
     protocol    = "tcp"
     from_port   = 5672
     to_port     = 5672
@@ -975,10 +940,11 @@ resource "aws_security_group" "rabbitmq" {
 resource "aws_mq_broker" "rabbitmq" {
   broker_name        = "${var.project_name}-rabbitmq"
   engine_type        = "RabbitMQ"
-  engine_version     = "3.11.20"
+  engine_version     = "3.13"
   host_instance_type = "mq.t3.micro"
   security_groups    = [aws_security_group.rabbitmq.id]
   subnet_ids         = [aws_subnet.public[0].id]
+  auto_minor_version_upgrade = true
 
   user {
     username = "admin"
@@ -992,9 +958,8 @@ resource "aws_mq_broker" "rabbitmq" {
 
 # Service Discovery
 resource "aws_service_discovery_private_dns_namespace" "main" {
-  name        = "${var.project_name}.local"
-  description = "Service discovery for ${var.project_name}"
-  vpc         = aws_vpc.main.id
+  name = "${var.project_name}.local"
+  vpc  = aws_vpc.main.id
 }
 
 resource "aws_service_discovery_service" "ai_upscaler_api" {
@@ -1010,8 +975,6 @@ resource "aws_service_discovery_service" "ai_upscaler_api" {
 
     routing_policy = "MULTIVALUE"
   }
-
-  health_check_grace_period_seconds = 30
 }
 
 resource "aws_service_discovery_service" "upscaler_service" {
@@ -1027,8 +990,6 @@ resource "aws_service_discovery_service" "upscaler_service" {
 
     routing_policy = "MULTIVALUE"
   }
-
-  health_check_grace_period_seconds = 30
 }
 
 # Service Discovery for Monitoring
@@ -1045,8 +1006,6 @@ resource "aws_service_discovery_service" "prometheus" {
 
     routing_policy = "MULTIVALUE"
   }
-
-  health_check_grace_period_seconds = 30
 }
 
 resource "aws_service_discovery_service" "grafana" {
@@ -1062,8 +1021,6 @@ resource "aws_service_discovery_service" "grafana" {
 
     routing_policy = "MULTIVALUE"
   }
-
-  health_check_grace_period_seconds = 30
 }
 
 # Data source for existing Route53 hosted zone
@@ -1125,24 +1082,6 @@ resource "aws_lb_listener" "https" {
   }
 }
 
-# HTTP to HTTPS redirect
-resource "aws_lb_listener" "http_redirect" {
-  count             = var.create_certificate ? 1 : 0
-  load_balancer_arn = aws_lb.main.arn
-  port              = "80"
-  protocol          = "HTTP"
-
-  default_action {
-    type = "redirect"
-
-    redirect {
-      port        = "443"
-      protocol    = "HTTPS"
-      status_code = "HTTP_301"
-    }
-  }
-}
-
 # HTTPS Listeners for monitoring services
 resource "aws_lb_listener" "grafana_https" {
   count             = var.create_certificate ? 1 : 0
@@ -1172,16 +1111,16 @@ resource "aws_lb_listener" "prometheus_https" {
   }
 }
 
-# Route53 Records for subdomains
+# Route53 Records - Main d main points to CloudFMont,aAPI in domain to ALBpoints to CloudFront, API subdomain to ALB
 resource "aws_route53_record" "main" {
   zone_id = data.aws_route53_zone.main.zone_id
   name    = var.domain_name
   type    = "A"
 
   alias {
-    name                   = aws_lb.main.dns_name
-    zone_id                = aws_lb.main.zone_id
-    evaluate_target_health = true
+    name                   = aws_cloudfront_distribution.frontend.domain_name
+    zone_id                = aws_cloudfront_distribution.frontend.hosted_zone_id
+    evaluate_target_health = false
   }
 }
 
@@ -1262,4 +1201,171 @@ resource "aws_security_group_rule" "alb_https_prometheus" {
   protocol          = "tcp"
   cidr_blocks       = ["0.0.0.0/0"]
   security_group_id = aws_security_group.monitoring.id
+}
+
+resource "aws_lb_listener_rule" "api" {
+  listener_arn = aws_lb_listener.main.arn
+  priority     = 100
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.ai_upscaler_api.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/api/*"]
+    }
+  }
+}
+
+# S3 bucket for frontend hosting
+resource "aws_s3_bucket" "frontend" {
+  bucket = "${var.project_name}-frontend"
+}
+
+resource "aws_s3_bucket_website_configuration" "frontend" {
+  bucket = aws_s3_bucket.frontend.id
+
+  index_document {
+    suffix = "index.html"
+  }
+
+  error_document {
+    key = "index.html"  # SPA routing
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "frontend" {
+  bucket = aws_s3_bucket.frontend.id
+
+  block_public_acls       = false
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
+}
+
+resource "aws_s3_bucket_policy" "frontend" {
+  bucket = aws_s3_bucket.frontend.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "PublicReadGetObject"
+        Effect    = "Allow"
+        Principal = "*"
+        Action    = "s3:GetObject"
+        Resource  = "${aws_s3_bucket.frontend.arn}/*"
+      }
+    ]
+  })
+}
+
+# CloudFront distribution
+resource "aws_cloudfront_distribution" "frontend" {
+  comment = "${var.project_name}-frontend"
+  
+  origin {
+    domain_name = aws_s3_bucket_website_configuration.frontend.website_endpoint
+    origin_id   = "S3-${aws_s3_bucket.frontend.bucket}"
+
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "http-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+  }
+
+  enabled             = true
+  default_root_object = "index.html"
+  aliases             = var.create_certificate ? [var.domain_name] : []
+
+  default_cache_behavior {
+    allowed_methods        = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    cached_methods         = ["GET", "HEAD"]
+    target_origin_id       = "S3-${aws_s3_bucket.frontend.bucket}"
+    compress               = true
+    viewer_protocol_policy = "redirect-to-https"
+
+    forwarded_values {
+      query_string = false
+      cookies {
+        forward = "none"
+      }
+    }
+  }
+
+  # SPA routing - redirect 404s to index.html
+  custom_error_response {
+    error_code         = 404
+    response_code      = 200
+    response_page_path = "/index.html"
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  viewer_certificate {
+    acm_certificate_arn      = var.create_certificate ? aws_acm_certificate_validation.main[0].certificate_arn : null
+    ssl_support_method       = var.create_certificate ? "sni-only" : null
+    minimum_protocol_version = var.create_certificate ? "TLSv1.2_2021" : null
+    cloudfront_default_certificate = var.create_certificate ? false : true
+  }
+}
+
+resource "aws_efs_access_point" "prometheus" {
+  file_system_id = aws_efs_file_system.monitoring.id
+
+  posix_user {
+    gid = 65534
+    uid = 65534
+  }
+
+  root_directory {
+    path = "/prometheus"
+
+    creation_info {
+      owner_gid   = 65534
+      owner_uid   = 65534
+      permissions = "755"
+    }
+  }
+}
+
+resource "aws_efs_access_point" "grafana" {
+  file_system_id = aws_efs_file_system.monitoring.id
+
+  posix_user {
+    gid = 472
+    uid = 472
+  }
+
+  
+
+  root_directory {
+    path = "/grafana"
+
+    creation_info {
+      owner_gid   = 472
+      owner_uid   = 472
+      permissions = "755"
+    }
+  }
+}
+
+# Add listener for upscaler service
+resource "aws_lb_listener" "upscaler_service" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = "8083"
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.upscaler_service.arn
+  }
 }

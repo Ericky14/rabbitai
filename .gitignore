@@ -41,3 +41,7 @@ pnpm-debug.log*
 dist/
 build/
 
+# IAC
+./terraform/.terraform
+terraform.tfvars
+./terraform/terraform.tfstate.*

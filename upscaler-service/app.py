@@ -27,13 +27,17 @@ app.add_middleware(
 )
 
 # Initialize clients
-s3_client = boto3.client(
-    's3',
-    endpoint_url=Config.AWS_ENDPOINT_URL,
-    aws_access_key_id=Config.AWS_ACCESS_KEY_ID,
-    aws_secret_access_key=Config.AWS_SECRET_ACCESS_KEY,
-    region_name=Config.AWS_DEFAULT_REGION
-)
+s3_client_config = {
+    'aws_access_key_id': Config.AWS_ACCESS_KEY_ID,
+    'aws_secret_access_key': Config.AWS_SECRET_ACCESS_KEY,
+    'region_name': Config.AWS_DEFAULT_REGION
+}
+
+# Only use endpoint_url for local development
+if Config.AWS_ENDPOINT_URL and 'localhost' in Config.AWS_ENDPOINT_URL:
+    s3_client_config['endpoint_url'] = Config.AWS_ENDPOINT_URL
+
+s3_client = boto3.client('s3', **s3_client_config)
 
 redis_client = redis.from_url(Config.REDIS_URL)
 

@@ -1,3 +1,4 @@
+
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,13 +24,17 @@ app.add_middleware(
 )
 
 # Initialize AWS clients
-s3_client = boto3.client(
-    's3',
-    endpoint_url=Config.AWS_ENDPOINT_URL,
-    aws_access_key_id=Config.AWS_ACCESS_KEY_ID,
-    aws_secret_access_key=Config.AWS_SECRET_ACCESS_KEY,
-    region_name=Config.AWS_DEFAULT_REGION
-)
+s3_client_config = {
+    'aws_access_key_id': Config.AWS_ACCESS_KEY_ID,
+    'aws_secret_access_key': Config.AWS_SECRET_ACCESS_KEY,
+    'region_name': Config.AWS_DEFAULT_REGION
+}
+
+# Only use endpoint_url for local development
+if Config.AWS_ENDPOINT_URL and 'localhost' in Config.AWS_ENDPOINT_URL:
+    s3_client_config['endpoint_url'] = Config.AWS_ENDPOINT_URL
+
+s3_client = boto3.client('s3', **s3_client_config)
 
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):
@@ -84,12 +89,16 @@ async def upscale_image(file: UploadFile = File(...)):
             "s3_input_key": s3_input_key
         }
         
+        print(f"Calling upscaler service at: {Config.UPSCALER_SERVICE_URL}")
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{Config.UPSCALER_SERVICE_URL}/process",
                 json=upscaler_payload,
                 timeout=300.0
             )
+        
+        print(f"Upscaler response status: {response.status_code}")
+        print(f"Upscaler response: {response.text}")
         
         if response.status_code == 200:
             result = response.json()
@@ -110,9 +119,11 @@ async def upscale_image(file: UploadFile = File(...)):
                 "processing_time": time.time() - start_time
             }
         else:
-            raise HTTPException(status_code=500, detail="Processing failed")
+            print(f"Upscaler service error: {response.status_code} - {response.text}")
+            raise HTTPException(status_code=500, detail=f"Processing failed: {response.text}")
             
     except Exception as e:
+        print(f"Upload error: {str(e)}")
         await analytics_client.log_upscale_completion(
             job_id, time.time() - start_time, "failed"
         )
