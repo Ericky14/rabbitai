@@ -31,6 +31,23 @@ s3_client = boto3.client(
     region_name=Config.AWS_DEFAULT_REGION
 )
 
+@app.middleware("http")
+async def metrics_middleware(request: Request, call_next):
+    """Middleware to record API metrics"""
+    start_time = time.time()
+    method = request.method
+    endpoint = str(request.url.path)
+    
+    response = await call_next(request)
+    
+    duration = time.time() - start_time
+    status = response.status_code
+    
+    # Record metrics
+    metrics.record_api_request(method, endpoint, duration, status)
+    
+    return response
+
 @app.get("/")
 async def root():
     return {"message": "AI Upscaler API"}

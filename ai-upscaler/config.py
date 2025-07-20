@@ -8,12 +8,15 @@ class Config:
     AWS_DEFAULT_REGION = os.getenv('AWS_DEFAULT_REGION', 'us-east-1')
     
     # S3 Buckets
-    S3_INPUT_BUCKET = 'ai-upscaler-input'
-    S3_OUTPUT_BUCKET = 'ai-upscaler-output'
-    S3_MODELS_BUCKET = 'ai-upscaler-models'
+    S3_INPUT_BUCKET = os.getenv('S3_INPUT_BUCKET', 'ai-upscaler-input')
+    S3_OUTPUT_BUCKET = os.getenv('S3_OUTPUT_BUCKET', 'ai-upscaler-output')
+    S3_MODELS_BUCKET = os.getenv('S3_MODELS_BUCKET', 'ai-upscaler-models')
     
     # Upscaler Service
     UPSCALER_SERVICE_URL = os.getenv('UPSCALER_SERVICE_URL', 'http://upscaler-service:8083')
+    
+    # Auth Service
+    AUTH_SERVICE_URL = os.getenv('AUTH_SERVICE_URL', 'http://auth-service:8082')
     
     # RabbitMQ Configuration
     RABBITMQ_URL = os.getenv('RABBITMQ_URL', 'amqp://admin:admin123@localhost:5672/')

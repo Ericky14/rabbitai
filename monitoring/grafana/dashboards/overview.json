@@ -1,0 +1,96 @@
+{
+  "id": null,
+  "title": "AI Upscaler Overview",
+  "tags": ["ai-upscaler"],
+  "timezone": "browser",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Total API Requests",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "sum(api_requests_total)",
+          "legendFormat": "Total Requests"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        }
+      },
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0}
+    },
+    {
+      "id": 2,
+      "title": "Request Rate (5m avg)",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "sum(rate(api_requests_total[5m])) * 60",
+          "legendFormat": "Requests/min"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqpm",
+          "decimals": 1
+        }
+      },
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0}
+    },
+    {
+      "id": 3,
+      "title": "File Uploads",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "sum(file_uploads_total)",
+          "legendFormat": "Total Uploads"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        }
+      },
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 4}
+    },
+    {
+      "id": 4,
+      "title": "Request Status Breakdown",
+      "type": "piechart",
+      "targets": [
+        {
+          "expr": "sum by (status) (api_requests_total)",
+          "legendFormat": "{{status}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+    },
+    {
+      "id": 5,
+      "title": "Request Rate Over Time",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(api_requests_total[1m])) * 60",
+          "legendFormat": "Requests/min"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqpm"
+        }
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+    }
+  ],
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "refresh": "5s"
+}

@@ -4,6 +4,7 @@ import asyncio
 import time
 from config import Config
 from prometheus_client import Counter, Histogram
+from metrics import metrics
 
 # Enhanced metrics
 rabbitmq_messages_published = Counter(
@@ -71,16 +72,21 @@ class AnalyticsClient:
                     exchange='',
                     routing_key='analytics_events',
                     body=json.dumps(event),
-                    properties=pika.BasicProperties(delivery_mode=2)  # Persistent
+                    properties=pika.BasicProperties(delivery_mode=2)
                 )
                 rabbitmq_messages_published.labels(
                     queue='analytics_events',
                     event_type=event['event_type']
                 ).inc()
+                
+                # Record in main metrics
+                metrics.record_analytics_event(event['event_type'], "success")
             else:
                 print(f"No RabbitMQ connection, logging locally: {json.dumps(event)}")
+                metrics.record_analytics_event(event['event_type'], "failed")
         except Exception as e:
             print(f"Failed to publish analytics event: {e}")
+            metrics.record_analytics_event(event.get('event_type', 'unknown'), "error")
         finally:
             duration = time.time() - start_time
             rabbitmq_publish_duration.labels(queue='analytics_events').observe(duration)
