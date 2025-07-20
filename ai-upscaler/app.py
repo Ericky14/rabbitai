@@ -17,7 +17,12 @@ app = FastAPI(title="AI Upscaler API")
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=[
+        "http://localhost:3000", 
+        "http://127.0.0.1:3000",
+        "https://fastrabbitai.com",
+        "https://www.fastrabbitai.com"
+    ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
@@ -83,51 +88,44 @@ async def upscale_image(file: UploadFile = File(...)):
             ContentType=file.content_type
         )
         
-        # Call upscaler service
-        upscaler_payload = {
+        # Send job to RabbitMQ queue
+        job_payload = {
             "job_id": job_id,
-            "s3_input_key": s3_input_key
+            "s3_input_key": s3_input_key,
+            "filename": file.filename,
+            "content_type": file.content_type,
+            "created_at": time.time()
         }
         
-        print(f"Calling upscaler service at: {Config.UPSCALER_SERVICE_URL}")
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{Config.UPSCALER_SERVICE_URL}/process",
-                json=upscaler_payload,
-                timeout=300.0
-            )
+        # Publish to processing queue
+        await analytics_client._publish_event_to_queue(job_payload, 'upscale_jobs')
         
-        print(f"Upscaler response status: {response.status_code}")
-        print(f"Upscaler response: {response.text}")
+        # Set initial status in Redis
+        redis_client.setex(f"job:{job_id}", 3600, json.dumps({
+            "status": "queued",
+            "created_at": time.time()
+        }))
         
-        if response.status_code == 200:
-            result = response.json()
-            
-            # Log analytics
-            await analytics_client.log_upscale_completion(
-                job_id, time.time() - start_time, "success"
-            )
-            
-            # Record metrics
-            metrics.record_file_upload(file.content_type or "unknown")
-            
-            return {
-                "job_id": job_id,
-                "status": "completed",
-                "input_file": file.filename,
-                "output_key": result['output_key'],
-                "processing_time": time.time() - start_time
-            }
-        else:
-            print(f"Upscaler service error: {response.status_code} - {response.text}")
-            raise HTTPException(status_code=500, detail=f"Processing failed: {response.text}")
-            
+        return {
+            "job_id": job_id,
+            "status": "queued",
+            "input_file": file.filename
+        }
+        
     except Exception as e:
         print(f"Upload error: {str(e)}")
-        await analytics_client.log_upscale_completion(
-            job_id, time.time() - start_time, "failed"
-        )
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
+@app.get("/status/{job_id}")
+async def get_job_status(job_id: str):
+    try:
+        status_data = redis_client.get(f"job:{job_id}")
+        if not status_data:
+            raise HTTPException(status_code=404, detail="Job not found")
+        
+        return json.loads(status_data)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Status check failed: {str(e)}")
 
 @app.get("/download/{job_id}")
 async def download_upscaled_image(job_id: str):
