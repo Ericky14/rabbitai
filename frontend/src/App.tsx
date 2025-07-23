@@ -40,6 +40,7 @@ const App: React.FC = () => {
   const [showFallback, setShowFallback] = useState<boolean>(false);
   const [buttonLoaded, setButtonLoaded] = useState<boolean>(false);
   const [isInitialized, setIsInitialized] = useState<boolean>(false);
+  const [isGoogleInitialized, setGoogleInitialized] = useState<boolean>(false);
   const [pollingTimeoutId, setPollingTimeoutId] = useState<NodeJS.Timeout | null>(null);
 
   // Load cached user on component mount
@@ -56,6 +57,13 @@ const App: React.FC = () => {
       }
     }
     setIsInitialized(true);
+
+    const interval = setInterval(() => {
+      if (window.google) {
+        clearInterval(interval);
+        setGoogleInitialized(true);
+      }
+    }, 100);
   }, []);
 
   const renderGoogleFallbackButton = () => {
@@ -80,7 +88,7 @@ const App: React.FC = () => {
 
   useEffect(() => {    
     // Only initialize Google Sign-In if user is not already signed in AND we've checked cache
-    if (!user && isInitialized && window.google) {
+    if (!user && isInitialized && isGoogleInitialized && window.google) {
       window.google.accounts.id.cancel();
 
       setTimeout(() => {
@@ -100,7 +108,7 @@ const App: React.FC = () => {
         });
       }, 100);
     }
-  }, [user, isInitialized]);
+  }, [user, isInitialized, isGoogleInitialized]);
 
   const handleGoogleSignIn = (response: GoogleCredentialResponse): void => {
     try {
